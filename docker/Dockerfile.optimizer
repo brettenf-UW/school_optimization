@@ -1,0 +1,50 @@
+FROM python:3.9-slim
+
+# Set up environment variables with defaults
+ENV USE_S3=true
+ENV BUCKET_NAME=chico-high-school-optimization
+ENV SCHOOL_PREFIX=input-data
+ENV SCHOOL_ID=chico-high-school
+
+# Install system dependencies for Gurobi and Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc \
+    g++ \
+    libstdc++6 \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install AWS SDK and other Python dependencies
+COPY backend/requirements.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.txt \
+    && pip install --no-cache-dir \
+    boto3 \
+    pandas \
+    numpy \
+    psutil \
+    gurobipy
+
+# Set up Gurobi environment variables
+# Note: In production, you should use AWS Parameter Store or Secrets Manager for license
+ENV GUROBI_HOME=/opt/gurobi
+ENV GRB_LICENSE_FILE=/opt/gurobi/gurobi.lic
+ENV PATH=$PATH:$GUROBI_HOME/bin
+ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GUROBI_HOME/lib
+
+# Create optimization directory structure
+RUN mkdir -p /app/backend/school_models/common /app/backend/school_models/chico_high /app/output /app/logs
+
+# Copy optimization code
+COPY backend/school_models/common/greedy.py /app/backend/school_models/common/
+COPY backend/school_models/chico_high/load.py /app/backend/school_models/chico_high/
+COPY backend/school_models/chico_high/milp_soft.py /app/backend/school_models/chico_high/
+COPY backend/batch_jobs/run_optimization.py /app/
+
+# Set working directory
+WORKDIR /app
+
+# Add Python path
+ENV PYTHONPATH=/app
+
+# Command to run when container starts
+ENTRYPOINT ["python", "run_optimization.py"]

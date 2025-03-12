@@ -1,0 +1,154 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - Master Template'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  DatabasePassword:
+    Description: Password for the database
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    
+  GurobiLicenseServer:
+    Description: Gurobi license server address
+    Type: String
+    Default: ""
+    
+  ImageTag:
+    Description: Docker image tag for all services
+    Type: String
+    Default: latest
+    
+  EmailVerificationSubject:
+    Description: Subject for the email verification message
+    Type: String
+    Default: Verify your email for Echelon Optimization Platform
+    
+  AdminEmail:
+    Description: Email address for the admin user
+    Type: String
+    Default: admin@example.com
+
+Resources:
+  # VPC and Networking Stack
+  NetworkStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/vpc.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        
+  # S3 Buckets Stack
+  S3Stack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/s3.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        
+  # SQS Queues Stack
+  SQSStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/sqs.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        
+  # Cognito User Pool Stack
+  CognitoStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/cognito.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        EmailVerificationSubject: !Ref EmailVerificationSubject
+        AdminEmail: !Ref AdminEmail
+        
+  # RDS Aurora PostgreSQL Stack
+  RDSStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn: NetworkStack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/rds.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        DatabasePassword: !Ref DatabasePassword
+        
+  # AWS Batch Setup Stack
+  BatchStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - S3Stack
+      - SQSStack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/batch.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        GurobiLicenseServer: !Ref GurobiLicenseServer
+        ImageTag: !Ref ImageTag
+        
+  # Lambda and API Gateway Stack
+  LambdaAPIStack:
+    Type: AWS::CloudFormation::Stack
+    DependsOn:
+      - NetworkStack
+      - S3Stack
+      - SQSStack
+      - CognitoStack
+      - RDSStack
+      - BatchStack
+    Properties:
+      TemplateURL: https://echelon-cloudformation.s3.amazonaws.com/lambda-api.yml
+      Parameters:
+        EnvironmentName: !Ref EnvironmentName
+        ImageTag: !Ref ImageTag
+
+Outputs:
+  VPCId:
+    Description: VPC ID
+    Value: !GetAtt NetworkStack.Outputs.VPC
+    
+  DataBucket:
+    Description: S3 bucket for data storage
+    Value: !GetAtt S3Stack.Outputs.DataBucket
+    
+  WebsiteBucket:
+    Description: S3 bucket for static website
+    Value: !GetAtt S3Stack.Outputs.WebsiteBucket
+    
+  OptimizationJobsQueueURL:
+    Description: SQS queue URL for optimization jobs
+    Value: !GetAtt SQSStack.Outputs.OptimizationJobsQueueURL
+    
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !GetAtt CognitoStack.Outputs.UserPoolId
+    
+  UserPoolClientId:
+    Description: Cognito User Pool Client ID
+    Value: !GetAtt CognitoStack.Outputs.UserPoolClientId
+    
+  UserPoolDomain:
+    Description: Cognito User Pool Domain
+    Value: !GetAtt CognitoStack.Outputs.UserPoolDomain
+    
+  DatabaseEndpoint:
+    Description: RDS Database Endpoint
+    Value: !GetAtt RDSStack.Outputs.AuroraClusterEndpoint
+    
+  OptimizationJobQueue:
+    Description: AWS Batch Job Queue for optimization
+    Value: !GetAtt BatchStack.Outputs.OptimizationJobQueue
+    
+  ApiGatewayUrl:
+    Description: API Gateway URL
+    Value: !GetAtt LambdaAPIStack.Outputs.ApiGatewayInvokeURL

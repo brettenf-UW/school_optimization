@@ -1,0 +1,248 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - AWS Batch Setup for High-Performance Computing'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  MaxvCpus:
+    Description: Maximum vCPUs for the compute environment
+    Type: Number
+    Default: 256
+    
+  MinvCpus:
+    Description: Minimum vCPUs for the compute environment
+    Type: Number
+    Default: 0
+    
+  DesiredvCpus:
+    Description: Desired vCPUs for the compute environment
+    Type: Number
+    Default: 0
+    
+  SpotBidPercentage:
+    Description: Maximum percentage of On-Demand price for Spot instances
+    Type: Number
+    Default: 100
+    MinValue: 1
+    MaxValue: 100
+    
+  OptimizationJobTimeout:
+    Description: Default timeout (in seconds) for optimization jobs
+    Type: Number
+    Default: 21600  # 6 hours
+    
+  GurobiLicenseServer:
+    Description: Gurobi license server address
+    Type: String
+    Default: ""
+    
+  ImageTag:
+    Description: Docker image tag
+    Type: String
+    Default: latest
+
+Resources:
+  # IAM Role for Batch Service
+  BatchServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: batch.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+      
+  # IAM Role for EC2 instances in the compute environment
+  BatchInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+      
+  # Instance Profile for the EC2 instances
+  BatchInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref BatchInstanceRole
+  
+  # IAM Role for Batch Jobs
+  BatchJobRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+      
+  # Compute Environment using Spot Instances
+  SpotComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      ComputeEnvironmentName: !Sub ${EnvironmentName}-echelon-spot-compute-env
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+      State: ENABLED
+      ComputeResources:
+        Type: SPOT
+        AllocationStrategy: SPOT_CAPACITY_OPTIMIZED
+        BidPercentage: !Ref SpotBidPercentage
+        MaxvCpus: !Ref MaxvCpus
+        MinvCpus: !Ref MinvCpus
+        DesiredvCpus: !Ref DesiredvCpus
+        InstanceTypes:
+          - c5.24xlarge  # 96 vCPUs, 192 GiB memory
+          - r5.24xlarge  # 96 vCPUs, 768 GiB memory
+          - x1.16xlarge  # 64 vCPUs, 976 GiB memory
+          - z1d.12xlarge # 48 vCPUs, 384 GiB memory
+        Subnets:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonPrivateSubnets
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonAPISecurityGroup
+        InstanceRole: !GetAtt BatchInstanceProfile.Arn
+        Tags:
+          Environment: !Ref EnvironmentName
+          Name: !Sub ${EnvironmentName}-echelon-spot-compute
+          
+  # Compute Environment using On-Demand Instances (fallback)
+  OnDemandComputeEnvironment:
+    Type: AWS::Batch::ComputeEnvironment
+    Properties:
+      Type: MANAGED
+      ComputeEnvironmentName: !Sub ${EnvironmentName}-echelon-ondemand-compute-env
+      ServiceRole: !GetAtt BatchServiceRole.Arn
+      State: ENABLED
+      ComputeResources:
+        Type: EC2
+        AllocationStrategy: BEST_FIT_PROGRESSIVE
+        MaxvCpus: !Ref MaxvCpus
+        MinvCpus: !Ref MinvCpus
+        DesiredvCpus: !Ref DesiredvCpus
+        InstanceTypes:
+          - c5.24xlarge  # 96 vCPUs, 192 GiB memory
+          - r5.24xlarge  # 96 vCPUs, 768 GiB memory
+        Subnets:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonPrivateSubnets
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonAPISecurityGroup
+        InstanceRole: !GetAtt BatchInstanceProfile.Arn
+        Tags:
+          Environment: !Ref EnvironmentName
+          Name: !Sub ${EnvironmentName}-echelon-ondemand-compute
+  
+  # Job Queue with priority order: Spot first, On-Demand as fallback
+  OptimizationJobQueue:
+    Type: AWS::Batch::JobQueue
+    Properties:
+      JobQueueName: !Sub ${EnvironmentName}-echelon-optimization-queue
+      Priority: 1
+      State: ENABLED
+      ComputeEnvironmentOrder:
+        - Order: 1
+          ComputeEnvironment: !Ref SpotComputeEnvironment
+        - Order: 2
+          ComputeEnvironment: !Ref OnDemandComputeEnvironment
+      Tags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-echelon-optimization-queue
+  
+  # Job Definition for optimization jobs
+  OptimizationJobDefinition:
+    Type: AWS::Batch::JobDefinition
+    Properties:
+      JobDefinitionName: !Sub ${EnvironmentName}-echelon-optimization-job
+      Type: container
+      PlatformCapabilities:
+        - EC2
+      RetryStrategy:
+        Attempts: 2
+      Timeout:
+        AttemptDurationSeconds: !Ref OptimizationJobTimeout
+      ContainerProperties:
+        Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/echelon-optimization:${ImageTag}
+        JobRoleArn: !GetAtt BatchJobRole.Arn
+        ExecutionRoleArn: !GetAtt BatchServiceRole.Arn
+        Command:
+          - python
+          - /app/optimization_worker.py
+        Environment:
+          - Name: GUROBI_LICENSE_SERVER
+            Value: !Ref GurobiLicenseServer
+          - Name: S3_BUCKET_NAME
+            Value: !Sub ${EnvironmentName}-echelon-data
+          - Name: SQS_QUEUE_URL
+            Value:
+              Fn::ImportValue: !Sub ${EnvironmentName}-EchelonOptimizationJobsQueueURL
+          - Name: ENVIRONMENT
+            Value: !Ref EnvironmentName
+        ResourceRequirements:
+          - Type: VCPU
+            Value: "48"  # 48 vCPUs as specified in requirements
+          - Type: MEMORY
+            Value: "368000"  # 368 GB as specified in requirements
+        LogConfiguration:
+          LogDriver: awslogs
+          Options:
+            awslogs-group: !Sub /aws/batch/${EnvironmentName}-echelon-optimization
+            awslogs-region: !Ref AWS::Region
+            awslogs-stream-prefix: echelon
+      Tags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-echelon-optimization-job
+
+  # CloudWatch Log Group for batch jobs
+  BatchLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/batch/${EnvironmentName}-echelon-optimization
+      RetentionInDays: 14
+
+Outputs:
+  OptimizationJobQueue:
+    Description: Job queue for optimization jobs
+    Value: !Ref OptimizationJobQueue
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonOptimizationJobQueue
+      
+  OptimizationJobDefinition:
+    Description: Job definition for optimization jobs
+    Value: !Ref OptimizationJobDefinition
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonOptimizationJobDefinition
+      
+  BatchJobRoleArn:
+    Description: ARN of the IAM role for batch jobs
+    Value: !GetAtt BatchJobRole.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonBatchJobRoleArn

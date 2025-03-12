@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - Cognito User Pool Setup'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  UserPoolName:
+    Description: Name of the Cognito User Pool
+    Type: String
+    Default: echelon-users
+    
+  AdminEmail:
+    Description: Email address for the admin user
+    Type: String
+    Default: admin@example.com
+    
+  ClientCallbackURLs:
+    Description: Comma-separated list of allowed callback URLs for the client
+    Type: CommaDelimitedList
+    Default: http://localhost:5173/auth/callback,https://dev.echelon-platform.com/auth/callback
+    
+  ClientLogoutURLs:
+    Description: Comma-separated list of allowed logout URLs for the client
+    Type: CommaDelimitedList
+    Default: http://localhost:5173/auth/logout,https://dev.echelon-platform.com/auth/logout
+    
+  EmailVerificationSubject:
+    Description: Subject for the email verification message
+    Type: String
+    Default: Verify your email for Echelon Optimization Platform
+    
+  EmailVerificationMessage:
+    Description: Message for the email verification
+    Type: String
+    Default: >
+      Thank you for registering with Echelon Optimization Platform. Your verification code is {####}.
+      
+  PasswordPolicy:
+    Description: Password policy complexity (LOW, MEDIUM, HIGH)
+    Type: String
+    Default: MEDIUM
+    AllowedValues:
+      - LOW
+      - MEDIUM
+      - HIGH
+      
+Conditions:
+  IsHighSecurityPassword: !Equals [!Ref PasswordPolicy, 'HIGH']
+  IsMediumSecurityPassword: !Equals [!Ref PasswordPolicy, 'MEDIUM']
+  IsLowSecurityPassword: !Equals [!Ref PasswordPolicy, 'LOW']
+
+Resources:
+  # User Pool
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub ${EnvironmentName}-${UserPoolName}
+      AutoVerifiedAttributes:
+        - email
+      UsernameAttributes:
+        - email
+      MfaConfiguration: "OPTIONAL"
+      EnabledMfas:
+        - SOFTWARE_TOKEN_MFA
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: false
+        InviteMessageTemplate:
+          EmailMessage: !Ref EmailVerificationMessage
+          EmailSubject: !Ref EmailVerificationSubject
+      EmailConfiguration:
+        EmailSendingAccount: COGNITO_DEFAULT
+      Policies:
+        PasswordPolicy:
+          MinimumLength: !If [IsHighSecurityPassword, 12, !If [IsMediumSecurityPassword, 10, 8]]
+          RequireLowercase: !If [IsLowSecurityPassword, false, true]
+          RequireNumbers: !If [IsLowSecurityPassword, false, true]
+          RequireSymbols: !If [IsHighSecurityPassword, true, !If [IsMediumSecurityPassword, true, false]]
+          RequireUppercase: !If [IsLowSecurityPassword, false, true]
+          TemporaryPasswordValidityDays: 7
+      Schema:
+        - Name: name
+          AttributeDataType: String
+          Mutable: true
+          Required: true
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+        - Name: phone_number
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: role
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+        - Name: school_id
+          AttributeDataType: String
+          Mutable: true
+          Required: false
+      UserPoolTags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-${UserPoolName}
+  
+  # User Pool Client
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub ${EnvironmentName}-echelon-app-client
+      GenerateSecret: true
+      RefreshTokenValidity: 30
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      TokenValidityUnits:
+        AccessToken: days
+        IdToken: days
+        RefreshToken: days
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_CUSTOM_AUTH
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      AllowedOAuthFlows:
+        - code
+        - implicit
+      AllowedOAuthScopes:
+        - phone
+        - email
+        - openid
+        - profile
+        - aws.cognito.signin.user.admin
+      CallbackURLs: !Ref ClientCallbackURLs
+      LogoutURLs: !Ref ClientLogoutURLs
+      SupportedIdentityProviders:
+        - COGNITO
+      PreventUserExistenceErrors: ENABLED
+      EnableTokenRevocation: true
+      
+  # User Pool Domain
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub ${EnvironmentName}-echelon-auth
+      UserPoolId: !Ref UserPool
+  
+  # User Pool Groups
+  AdminGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Administrators
+      Description: Administrator group with full access
+      Precedence: 0
+      UserPoolId: !Ref UserPool
+      
+  TeacherGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Teachers
+      Description: Teacher group with limited access
+      Precedence: 1
+      UserPoolId: !Ref UserPool
+      
+  StaffGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: Staff
+      Description: School staff group with standard access
+      Precedence: 2
+      UserPoolId: !Ref UserPool
+
+  # Resource Server for API
+  ResourceServer:
+    Type: AWS::Cognito::UserPoolResourceServer
+    Properties:
+      UserPoolId: !Ref UserPool
+      Identifier: !Sub ${EnvironmentName}-echelon-api
+      Name: !Sub ${EnvironmentName}-echelon-api
+      Scopes:
+        - ScopeDescription: Read access to the API
+          ScopeName: read
+        - ScopeDescription: Write access to the API
+          ScopeName: write
+        - ScopeDescription: Admin access to the API
+          ScopeName: admin
+
+  # Identity Pool for AWS resource access
+  IdentityPool:
+    Type: AWS::Cognito::IdentityPool
+    Properties:
+      IdentityPoolName: !Sub ${EnvironmentName}-echelon-identity-pool
+      AllowUnauthenticatedIdentities: false
+      CognitoIdentityProviders:
+        - ClientId: !Ref UserPoolClient
+          ProviderName: !GetAtt UserPool.ProviderName
+          ServerSideTokenCheck: true
+
+  # Identity Pool Roles
+  IdentityPoolRoles:
+    Type: AWS::Cognito::IdentityPoolRoleAttachment
+    Properties:
+      IdentityPoolId: !Ref IdentityPool
+      Roles:
+        authenticated: !GetAtt AuthenticatedRole.Arn
+        unauthenticated: !GetAtt UnauthenticatedRole.Arn
+      RoleMappings:
+        cognito-idp:
+          Type: Token
+          AmbiguousRoleResolution: Deny
+          IdentityProvider: !Sub cognito-idp.${AWS::Region}.amazonaws.com/${UserPool}:${UserPoolClient}
+
+  # IAM Roles for Identity Pool
+  AuthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref IdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': authenticated
+      Policies:
+        - PolicyName: !Sub ${EnvironmentName}-echelon-authenticated-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: 
+                  - !Sub arn:aws:s3:::${EnvironmentName}-echelon-data/${cognito:username}/*
+              - Effect: Allow
+                Action:
+                  - s3:ListBucket
+                Resource: !Sub arn:aws:s3:::${EnvironmentName}-echelon-data
+                Condition:
+                  StringLike:
+                    s3:prefix: ${cognito:username}/*
+
+  UnauthenticatedRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: cognito-identity.amazonaws.com
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                'cognito-identity.amazonaws.com:aud': !Ref IdentityPool
+              'ForAnyValue:StringLike':
+                'cognito-identity.amazonaws.com:amr': unauthenticated
+      Policies:
+        - PolicyName: !Sub ${EnvironmentName}-echelon-unauthenticated-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: !Sub arn:aws:s3:::${EnvironmentName}-echelon-website/*
+
+Outputs:
+  UserPoolId:
+    Description: ID of the Cognito User Pool
+    Value: !Ref UserPool
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonUserPoolId
+      
+  UserPoolClientId:
+    Description: ID of the Cognito User Pool Client
+    Value: !Ref UserPoolClient
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonUserPoolClientId
+      
+  IdentityPoolId:
+    Description: ID of the Cognito Identity Pool
+    Value: !Ref IdentityPool
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonIdentityPoolId
+      
+  UserPoolDomain:
+    Description: Domain name of the Cognito User Pool
+    Value: !Sub ${EnvironmentName}-echelon-auth.auth.${AWS::Region}.amazoncognito.com
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonUserPoolDomain

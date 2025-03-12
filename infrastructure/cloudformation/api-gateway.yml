@@ -1,0 +1,227 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'API Gateway for Echelon Optimization Platform'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    Description: Environment name (dev, staging, prod)
+  
+  LambdaExecutionRole:
+    Type: String
+    Description: ARN of role for Lambda execution
+
+Resources:
+  OptimizationApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${EnvironmentName}-echelon-optimization-api
+      Description: API for Echelon School Schedule Optimization
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      ApiKeySourceType: HEADER
+      BinaryMediaTypes:
+        - 'multipart/form-data'
+  
+  # API Resources
+  JobsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !GetAtt OptimizationApi.RootResourceId
+      PathPart: "jobs"
+      RestApiId: !Ref OptimizationApi
+
+  JobStatusResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref JobsResource
+      PathPart: "{jobId}"
+      RestApiId: !Ref OptimizationApi
+
+  JobStatusEndpoint:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      ParentId: !Ref JobStatusResource
+      PathPart: "status"
+      RestApiId: !Ref OptimizationApi
+  
+  # Lambda Functions
+  SubmitJobLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-echelon-submit-job
+      Code:
+        ZipFile: |
+          // Will be replaced by actual code during deployment
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'Function will be replaced during deployment' }) };
+          };
+      Handler: submit_optimization_job.handler
+      Role: !Ref LambdaExecutionRole
+      Runtime: nodejs16.x
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          JOB_QUEUE: ec2-que
+          JOB_DEFINITION: getting-started-ec2-job-definition
+  
+  GetJobStatusLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-echelon-get-job-status
+      Code:
+        ZipFile: |
+          // Will be replaced by actual code during deployment
+          exports.handler = async (event) => {
+            return { statusCode: 200, body: JSON.stringify({ message: 'Function will be replaced during deployment' }) };
+          };
+      Handler: get_optimization_job_status.handler
+      Role: !Ref LambdaExecutionRole
+      Runtime: nodejs16.x
+      Timeout: 30
+      MemorySize: 256
+      Environment:
+        Variables:
+          RESULTS_BUCKET: chico-high-school-optimization
+  
+  # API Methods
+  SubmitJobMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      HttpMethod: POST
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${SubmitJobLambda.Arn}/invocations
+      ResourceId: !Ref JobsResource
+      RestApiId: !Ref OptimizationApi
+      AuthorizerId: !Ref ApiCognitoAuthorizer
+  
+  GetJobStatusMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: COGNITO_USER_POOLS
+      HttpMethod: GET
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${GetJobStatusLambda.Arn}/invocations
+      ResourceId: !Ref JobStatusEndpoint
+      RestApiId: !Ref OptimizationApi
+      AuthorizerId: !Ref ApiCognitoAuthorizer
+  
+  # CORS Options Method for jobs resource
+  JobsOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref OptimizationApi
+      ResourceId: !Ref JobsResource
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'POST,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # CORS Options Method for job status endpoint
+  JobStatusOptionsMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      RestApiId: !Ref OptimizationApi
+      ResourceId: !Ref JobStatusEndpoint
+      HttpMethod: OPTIONS
+      Integration:
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'GET,OPTIONS'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+            ResponseTemplates:
+              application/json: ''
+        PassthroughBehavior: WHEN_NO_MATCH
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+        Type: MOCK
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: true
+            method.response.header.Access-Control-Allow-Methods: true
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # Cognito User Pool Authorizer
+  ApiCognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: echelon-cognito-authorizer
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      RestApiId: !Ref OptimizationApi
+      ProviderARNs:
+        - !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/us-west-2_gVCuWb3dQ
+  
+  # API Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - SubmitJobMethod
+      - GetJobStatusMethod
+      - JobsOptionsMethod
+      - JobStatusOptionsMethod
+    Properties:
+      RestApiId: !Ref OptimizationApi
+      StageName: !Ref EnvironmentName
+  
+  # Lambda Permissions
+  SubmitJobLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SubmitJobLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OptimizationApi}/${EnvironmentName}/POST/jobs
+  
+  GetJobStatusLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref GetJobStatusLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${OptimizationApi}/${EnvironmentName}/GET/jobs/{jobId}/status
+
+Outputs:
+  ApiId:
+    Description: ID of the API Gateway
+    Value: !Ref OptimizationApi
+    
+  ApiUrl:
+    Description: URL of the API Gateway
+    Value: !Sub https://${OptimizationApi}.execute-api.${AWS::Region}.amazonaws.com/${EnvironmentName}/
+    
+  SubmitJobLambdaArn:
+    Description: ARN of the Submit Job Lambda Function
+    Value: !GetAtt SubmitJobLambda.Arn
+    
+  GetJobStatusLambdaArn:
+    Description: ARN of the Get Job Status Lambda Function
+    Value: !GetAtt GetJobStatusLambda.Arn

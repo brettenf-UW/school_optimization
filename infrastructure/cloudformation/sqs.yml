@@ -1,0 +1,151 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - SQS Queue Setup'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  MessageRetentionPeriod:
+    Description: The number of seconds that Amazon SQS retains a message
+    Type: Number
+    Default: 345600  # 4 days
+    
+  VisibilityTimeout:
+    Description: The visibility timeout for the queue (in seconds)
+    Type: Number
+    Default: 3600  # 1 hour to allow for long-running optimization jobs
+    
+  MaxReceiveCount:
+    Description: The maximum number of times a message can be received before being sent to the DLQ
+    Type: Number
+    Default: 3
+
+Resources:
+  # Dead Letter Queue for optimization jobs
+  OptimizationJobsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${EnvironmentName}-echelon-optimization-jobs-dlq
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-optimization-jobs-dlq
+          
+  # Main queue for optimization jobs
+  OptimizationJobsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${EnvironmentName}-echelon-optimization-jobs
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      VisibilityTimeout: !Ref VisibilityTimeout
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt OptimizationJobsDLQ.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-optimization-jobs
+
+  # Dead Letter Queue for file processing jobs
+  FileProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${EnvironmentName}-echelon-file-processing-dlq
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-file-processing-dlq
+          
+  # Queue for file processing jobs
+  FileProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${EnvironmentName}-echelon-file-processing
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      VisibilityTimeout: 900  # 15 minutes for file processing
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FileProcessingDLQ.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-file-processing
+          
+  # Dead Letter Queue for notifications
+  NotificationsDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${EnvironmentName}-echelon-notifications-dlq
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-notifications-dlq
+          
+  # FIFO Queue for notifications to ensure ordered delivery
+  NotificationsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Sub ${EnvironmentName}-echelon-notifications.fifo
+      FifoQueue: true
+      ContentBasedDeduplication: true
+      MessageRetentionPeriod: !Ref MessageRetentionPeriod
+      VisibilityTimeout: 300  # 5 minutes for notifications
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationsDLQ.Arn
+        maxReceiveCount: !Ref MaxReceiveCount
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-notifications
+
+Outputs:
+  OptimizationJobsQueueURL:
+    Description: URL of the SQS queue for optimization jobs
+    Value: !Ref OptimizationJobsQueue
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonOptimizationJobsQueueURL
+      
+  OptimizationJobsQueueARN:
+    Description: ARN of the SQS queue for optimization jobs
+    Value: !GetAtt OptimizationJobsQueue.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonOptimizationJobsQueueARN
+      
+  FileProcessingQueueURL:
+    Description: URL of the SQS queue for file processing
+    Value: !Ref FileProcessingQueue
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonFileProcessingQueueURL
+      
+  FileProcessingQueueARN:
+    Description: ARN of the SQS queue for file processing
+    Value: !GetAtt FileProcessingQueue.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonFileProcessingQueueARN
+      
+  NotificationsQueueURL:
+    Description: URL of the SQS queue for notifications
+    Value: !Ref NotificationsQueue
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonNotificationsQueueURL
+      
+  NotificationsQueueARN:
+    Description: ARN of the SQS queue for notifications
+    Value: !GetAtt NotificationsQueue.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonNotificationsQueueARN

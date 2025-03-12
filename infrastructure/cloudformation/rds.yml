@@ -1,0 +1,175 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - RDS Aurora PostgreSQL Setup'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  DatabaseName:
+    Description: Name of the database
+    Type: String
+    Default: echelon
+    AllowedPattern: '[a-zA-Z][a-zA-Z0-9_]*'
+    ConstraintDescription: Must begin with a letter and only contain alphanumeric characters and underscores
+    
+  DatabaseUsername:
+    Description: Username for the database
+    Type: String
+    Default: echelon_admin
+    NoEcho: true
+    
+  DatabasePassword:
+    Description: Password for the database
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 41
+    AllowedPattern: '[a-zA-Z0-9!@#$%^&*()_+=-]*'
+    ConstraintDescription: Must contain only alphanumeric and special characters
+    
+  MinCapacity:
+    Description: Minimum capacity units for Aurora Serverless
+    Type: Number
+    Default: 0.5
+    MinValue: 0.5
+    MaxValue: 128
+    
+  MaxCapacity:
+    Description: Maximum capacity units for Aurora Serverless
+    Type: Number
+    Default: 4
+    MinValue: 1
+    MaxValue: 128
+    
+  AutoPauseAfter:
+    Description: Time (in minutes) before an idle DB cluster is paused (0 to disable)
+    Type: Number
+    Default: 30
+    MinValue: 0
+    
+  BackupRetentionPeriod:
+    Description: The number of days to keep automated backups
+    Type: Number
+    Default: 7
+    MinValue: 1
+    MaxValue: 35
+
+Conditions:
+  IsProd: !Equals [!Ref EnvironmentName, 'prod']
+  IsAutoPauseEnabled: !Not [!Equals [!Ref AutoPauseAfter, 0]]
+
+Resources:
+  # DB Subnet Group
+  DBSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: Subnet group for RDS Aurora PostgreSQL
+      SubnetIds:
+        Fn::Split:
+          - ','
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonPrivateSubnets
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-db-subnet-group
+          
+  # Aurora Serverless v2 Cluster
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    Properties:
+      Engine: aurora-postgresql
+      EngineVersion: '13.7' # Use the latest version supported by Serverless v2
+      DatabaseName: !Ref DatabaseName
+      MasterUsername: !Ref DatabaseUsername
+      MasterUserPassword: !Ref DatabasePassword
+      DBSubnetGroupName: !Ref DBSubnetGroup
+      VpcSecurityGroupIds:
+        - Fn::ImportValue:
+            !Sub ${EnvironmentName}-EchelonDatabaseSecurityGroup
+      StorageEncrypted: true
+      BackupRetentionPeriod: !If [IsProd, 14, !Ref BackupRetentionPeriod]
+      PreferredBackupWindow: 02:00-03:00 # UTC time
+      PreferredMaintenanceWindow: sat:03:00-sat:04:00 # UTC time
+      DeletionProtection: !If [IsProd, true, false]
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: !Ref MinCapacity
+        MaxCapacity: !Ref MaxCapacity
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-aurora-cluster
+          
+  # DB Instance
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    Properties:
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: db.serverless
+      Engine: aurora-postgresql
+      PubliclyAccessible: false
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-aurora-instance
+          
+  # Secret for database credentials
+  DatabaseSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub ${EnvironmentName}/echelon/database
+      Description: !Sub Database credentials for ${EnvironmentName} environment
+      SecretString:
+        !Join
+          - ''
+          - - '{"username":"'
+            - !Ref DatabaseUsername
+            - '","password":"'
+            - !Ref DatabasePassword
+            - '","engine":"postgresql"'
+            - ',"host":"'
+            - !GetAtt AuroraCluster.Endpoint.Address
+            - '","port":"'
+            - !GetAtt AuroraCluster.Endpoint.Port
+            - '","dbname":"'
+            - !Ref DatabaseName
+            - '"}'
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-db-secret
+
+Outputs:
+  AuroraClusterEndpoint:
+    Description: The endpoint of the Aurora cluster
+    Value: !GetAtt AuroraCluster.Endpoint.Address
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonAuroraClusterEndpoint
+      
+  AuroraClusterPort:
+    Description: The port of the Aurora cluster
+    Value: !GetAtt AuroraCluster.Endpoint.Port
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonAuroraClusterPort
+      
+  DatabaseName:
+    Description: The name of the database
+    Value: !Ref DatabaseName
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonDatabaseName
+      
+  DatabaseSecretArn:
+    Description: ARN of the secret containing database credentials
+    Value: !Ref DatabaseSecret
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonDatabaseSecretArn

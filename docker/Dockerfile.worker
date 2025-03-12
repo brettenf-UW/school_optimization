@@ -1,0 +1,47 @@
+FROM python:3.9-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    wget \
+    curl \
+    unzip \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Set working directory
+WORKDIR /app
+
+# Install Python dependencies
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install Gurobi (this would include the license setup in a real deployment)
+# This is a placeholder - in a real deployment you would need to:
+# 1. Download Gurobi from a secure location
+# 2. Set up the license properly
+# 3. Include any Gurobi-specific configuration
+
+# For the current purpose we'll simulate with a comment:
+# RUN wget https://packages.gurobi.com/9.5/gurobi9.5.2_linux64.tar.gz && \
+#     tar -xzf gurobi9.5.2_linux64.tar.gz && \
+#     rm gurobi9.5.2_linux64.tar.gz && \
+#     cd gurobi952/linux64 && \
+#     python setup.py install && \
+#     cd ../.. && \
+#     rm -rf gurobi952
+
+# Copy application code
+COPY backend/ .
+
+# Create non-root user
+RUN useradd -m appuser
+USER appuser
+
+# Set entry point
+ENTRYPOINT ["python", "optimization_worker.py"]

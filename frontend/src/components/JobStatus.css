@@ -1,0 +1,105 @@
+.job-status-container {
+  margin: 20px 0;
+}
+
+.job-status {
+  padding: 15px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+}
+
+.job-status h3 {
+  margin-top: 0;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.job-status.loading,
+.job-status.submitted,
+.job-status.running {
+  background-color: rgba(0, 119, 255, 0.1);
+  color: #0077ff;
+  border: 1px solid #0077ff;
+}
+
+.job-status.succeeded {
+  background-color: rgba(0, 170, 85, 0.1);
+  color: #00aa55;
+  border: 1px solid #00aa55;
+}
+
+.job-status.failed,
+.job-status.error {
+  background-color: rgba(255, 60, 0, 0.1);
+  color: #ff3c00;
+  border: 1px solid #ff3c00;
+}
+
+.job-status.not-found {
+  background-color: #f0f0f0;
+  color: #666;
+  border: 1px solid #ccc;
+}
+
+.progress-indicator {
+  display: flex;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid rgba(0, 119, 255, 0.2);
+  border-radius: 50%;
+  border-top-color: #0077ff;
+  animation: spin 1s linear infinite;
+  margin-right: 10px;
+}
+
+.job-status.running .spinner {
+  border-top-color: #0077ff;
+}
+
+.job-status.succeeded .spinner {
+  border-top-color: #00aa55;
+}
+
+.job-status.failed .spinner {
+  border-top-color: #ff3c00;
+}
+
+.job-results {
+  margin-top: 15px;
+  padding-top: 15px;
+  border-top: 1px solid rgba(0, 170, 85, 0.3);
+}
+
+.job-results h4 {
+  margin-top: 0;
+  margin-bottom: 10px;
+}
+
+.job-results ul {
+  list-style-type: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.job-results li {
+  margin-bottom: 5px;
+}
+
+.job-results a {
+  color: #0077ff;
+  text-decoration: none;
+}
+
+.job-results a:hover {
+  text-decoration: underline;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}

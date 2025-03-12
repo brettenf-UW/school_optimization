@@ -1,0 +1,142 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - S3 Buckets Setup'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
+Resources:
+  # Main data bucket for uploads, processed data, and results
+  DataBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub ${EnvironmentName}-echelon-data
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToInfrequentAccess
+            Status: Enabled
+            Prefix: results/
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Prefix: archive/
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-data
+
+  # Bucket for frontend static web assets
+  WebsiteBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${EnvironmentName}-echelon-website
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-website
+
+  # Bucket policy for website bucket
+  WebsiteBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebsiteBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub arn:aws:s3:::${WebsiteBucket}/*
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub arn:aws:cloudfront::${AWS::AccountId}:distribution/*
+
+  # Bucket for logs
+  LogsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ${EnvironmentName}-echelon-logs
+      AccessControl: LogDeliveryWrite
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldLogs
+            Status: Enabled
+            ExpirationInDays: 365
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-logs
+
+Outputs:
+  DataBucket:
+    Description: S3 bucket for data storage
+    Value: !Ref DataBucket
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonDataBucket
+
+  DataBucketArn:
+    Description: ARN of S3 bucket for data storage
+    Value: !GetAtt DataBucket.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonDataBucketArn
+
+  WebsiteBucket:
+    Description: S3 bucket for static website
+    Value: !Ref WebsiteBucket
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonWebsiteBucket
+
+  WebsiteBucketArn:
+    Description: ARN of S3 bucket for static website
+    Value: !GetAtt WebsiteBucket.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonWebsiteBucketArn
+
+  LogsBucket:
+    Description: S3 bucket for logs
+    Value: !Ref LogsBucket
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonLogsBucket

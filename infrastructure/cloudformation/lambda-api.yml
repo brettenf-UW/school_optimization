@@ -1,0 +1,534 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Echelon Optimization Platform - Lambda and API Gateway Setup'
+
+Parameters:
+  EnvironmentName:
+    Description: Environment name (dev, staging, prod)
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+      
+  LambdaMemorySize:
+    Description: Memory size for Lambda functions (MB)
+    Type: Number
+    Default: 1024
+    AllowedValues:
+      - 128
+      - 256
+      - 512
+      - 1024
+      - 2048
+      - 3008
+      - 4096
+      - 8192
+      - 10240
+      
+  LambdaTimeout:
+    Description: Timeout for Lambda functions (seconds)
+    Type: Number
+    Default: 30
+    MinValue: 3
+    MaxValue: 900
+    
+  ApiGatewayStageName:
+    Description: Stage name for API Gateway
+    Type: String
+    Default: v1
+    
+  CorsOrigin:
+    Description: CORS allowed origin
+    Type: String
+    Default: '*'
+    
+  ImageTag:
+    Description: Docker image tag
+    Type: String
+    Default: latest
+
+Resources:
+  # IAM Role for Lambda execution
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonS3FullAccess
+        - arn:aws:iam::aws:policy/AmazonSQSFullAccess
+        - arn:aws:iam::aws:policy/AmazonCognitoPowerUser
+      Policies:
+        - PolicyName: !Sub ${EnvironmentName}-echelon-lambda-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDatabaseSecretArn
+              - Effect: Allow
+                Action:
+                  - batch:SubmitJob
+                  - batch:DescribeJobs
+                  - batch:ListJobs
+                Resource: '*'
+  
+  # Lambda Function for Auth API
+  AuthFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-echelon-auth-api
+      Description: Authentication API for Echelon Optimization Platform
+      Runtime: python3.9
+      Handler: auth_api.handler
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Role: !GetAtt LambdaExecutionRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/echelon-api:${ImageTag}
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref EnvironmentName
+          COGNITO_USER_POOL_ID:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonUserPoolId
+          COGNITO_APP_CLIENT_ID:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonUserPoolClientId
+          S3_BUCKET_NAME:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDataBucket
+          CORS_ORIGIN: !Ref CorsOrigin
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonAPISecurityGroup
+        SubnetIds:
+          Fn::Split:
+            - ','
+            - Fn::ImportValue:
+                !Sub ${EnvironmentName}-EchelonPrivateSubnets
+      Tags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-echelon-auth-api
+  
+  # Lambda Function for File Upload API
+  UploadFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-echelon-upload-api
+      Description: File upload API for Echelon Optimization Platform
+      Runtime: python3.9
+      Handler: upload_api.handler
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Role: !GetAtt LambdaExecutionRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/echelon-api:${ImageTag}
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref EnvironmentName
+          COGNITO_USER_POOL_ID:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonUserPoolId
+          S3_BUCKET_NAME:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDataBucket
+          SQS_QUEUE_URL:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonFileProcessingQueueURL
+          CORS_ORIGIN: !Ref CorsOrigin
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonAPISecurityGroup
+        SubnetIds:
+          Fn::Split:
+            - ','
+            - Fn::ImportValue:
+                !Sub ${EnvironmentName}-EchelonPrivateSubnets
+      Tags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-echelon-upload-api
+  
+  # Lambda Function for Jobs API
+  JobsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-echelon-jobs-api
+      Description: Jobs API for Echelon Optimization Platform
+      Runtime: python3.9
+      Handler: jobs_api.handler
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Role: !GetAtt LambdaExecutionRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/echelon-api:${ImageTag}
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref EnvironmentName
+          COGNITO_USER_POOL_ID:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonUserPoolId
+          S3_BUCKET_NAME:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDataBucket
+          SQS_QUEUE_URL:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonOptimizationJobsQueueURL
+          BATCH_JOB_QUEUE:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonOptimizationJobQueue
+          BATCH_JOB_DEFINITION:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonOptimizationJobDefinition
+          DATABASE_SECRET_ARN:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDatabaseSecretArn
+          CORS_ORIGIN: !Ref CorsOrigin
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonAPISecurityGroup
+        SubnetIds:
+          Fn::Split:
+            - ','
+            - Fn::ImportValue:
+                !Sub ${EnvironmentName}-EchelonPrivateSubnets
+      Tags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-echelon-jobs-api
+  
+  # Lambda Function for Admin API
+  AdminFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub ${EnvironmentName}-echelon-admin-api
+      Description: Admin API for Echelon Optimization Platform
+      Runtime: python3.9
+      Handler: admin_api.handler
+      Timeout: !Ref LambdaTimeout
+      MemorySize: !Ref LambdaMemorySize
+      Role: !GetAtt LambdaExecutionRole.Arn
+      PackageType: Image
+      Code:
+        ImageUri: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/echelon-api:${ImageTag}
+      Environment:
+        Variables:
+          ENVIRONMENT: !Ref EnvironmentName
+          COGNITO_USER_POOL_ID:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonUserPoolId
+          S3_BUCKET_NAME:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDataBucket
+          DATABASE_SECRET_ARN:
+            Fn::ImportValue: !Sub ${EnvironmentName}-EchelonDatabaseSecretArn
+          CORS_ORIGIN: !Ref CorsOrigin
+      VpcConfig:
+        SecurityGroupIds:
+          - Fn::ImportValue:
+              !Sub ${EnvironmentName}-EchelonAPISecurityGroup
+        SubnetIds:
+          Fn::Split:
+            - ','
+            - Fn::ImportValue:
+                !Sub ${EnvironmentName}-EchelonPrivateSubnets
+      Tags:
+        Environment: !Ref EnvironmentName
+        Name: !Sub ${EnvironmentName}-echelon-admin-api
+  
+  # API Gateway for all APIs
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub ${EnvironmentName}-echelon-api
+      Description: API Gateway for Echelon Optimization Platform
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+      BinaryMediaTypes:
+        - multipart/form-data
+      Tags:
+        - Key: Environment
+          Value: !Ref EnvironmentName
+        - Key: Name
+          Value: !Sub ${EnvironmentName}-echelon-api
+  
+  # API Gateway Authorizer using Cognito
+  CognitoAuthorizer:
+    Type: AWS::ApiGateway::Authorizer
+    Properties:
+      Name: EchelonCognitoAuthorizer
+      RestApiId: !Ref ApiGateway
+      Type: COGNITO_USER_POOLS
+      IdentitySource: method.request.header.Authorization
+      ProviderARNs:
+        - !Sub arn:aws:cognito-idp:${AWS::Region}:${AWS::AccountId}:userpool/${Fn::ImportValue: !Sub ${EnvironmentName}-EchelonUserPoolId}
+  
+  # Auth API Resources
+  AuthResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: auth
+  
+  # Auth Signin Resource
+  AuthSigninResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref AuthResource
+      PathPart: signin
+  
+  # Auth Signin Method
+  AuthSigninMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref AuthSigninResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AuthFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # Upload API Resources
+  UploadResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: upload
+  
+  # Upload School Data Resource
+  UploadSchoolDataResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref UploadResource
+      PathPart: school-data
+  
+  # Upload School Data Method
+  UploadSchoolDataMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref UploadSchoolDataResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${UploadFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # Jobs API Resources
+  JobsResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: jobs
+  
+  # Jobs Schedule Resource
+  JobsScheduleResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref JobsResource
+      PathPart: schedule
+  
+  # Jobs Schedule Method
+  JobsScheduleMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref JobsScheduleResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JobsFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # Jobs Status Resource
+  JobStatusResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref JobsResource
+      PathPart: status
+  
+  # Jobs Status Method
+  JobStatusMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref JobStatusResource
+      HttpMethod: GET
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      RequestParameters:
+        method.request.querystring.job_id: true
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${JobsFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # Admin API Resources
+  AdminResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: admin
+  
+  # Admin Users Resource
+  AdminUsersResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !Ref AdminResource
+      PathPart: users
+  
+  # Admin Users Method
+  AdminUsersMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ResourceId: !Ref AdminUsersResource
+      HttpMethod: POST
+      AuthorizationType: COGNITO_USER_POOLS
+      AuthorizerId: !Ref CognitoAuthorizer
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${AdminFunction.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseModels:
+            application/json: Empty
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: true
+  
+  # Lambda permissions for API Gateway
+  AuthFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AuthFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/auth/signin
+  
+  UploadFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt UploadFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/upload/school-data
+  
+  JobsFunctionPermission1:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt JobsFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/jobs/schedule
+  
+  JobsFunctionPermission2:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt JobsFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/jobs/status
+  
+  AdminFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt AdminFunction.Arn
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/POST/admin/users
+  
+  # API Gateway Deployment
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn:
+      - AuthSigninMethod
+      - UploadSchoolDataMethod
+      - JobsScheduleMethod
+      - JobStatusMethod
+      - AdminUsersMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: !Ref ApiGatewayStageName
+      StageDescription:
+        LoggingLevel: INFO
+        MetricsEnabled: true
+        DataTraceEnabled: true
+  
+  # CloudWatch Log Group for API Gateway
+  ApiGatewayLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/apigateway/${EnvironmentName}-echelon-api
+      RetentionInDays: 14
+
+Outputs:
+  ApiGatewayInvokeURL:
+    Description: URL to invoke the API Gateway
+    Value: !Sub https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${ApiGatewayStageName}
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonApiGatewayUrl
+      
+  AuthFunctionArn:
+    Description: ARN of the authentication Lambda function
+    Value: !GetAtt AuthFunction.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonAuthFunctionArn
+      
+  UploadFunctionArn:
+    Description: ARN of the upload Lambda function
+    Value: !GetAtt UploadFunction.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonUploadFunctionArn
+      
+  JobsFunctionArn:
+    Description: ARN of the jobs Lambda function
+    Value: !GetAtt JobsFunction.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonJobsFunctionArn
+      
+  AdminFunctionArn:
+    Description: ARN of the admin Lambda function
+    Value: !GetAtt AdminFunction.Arn
+    Export:
+      Name: !Sub ${EnvironmentName}-EchelonAdminFunctionArn

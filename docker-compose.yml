@@ -45,6 +45,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app
+    entrypoint: []
     command: >
       bash -c "python -m pip install awscli && 
       aws sts get-caller-identity > /app/aws_identity.log 2>&1 || echo 'IAM role check failed' &&
@@ -92,6 +93,7 @@ services:
       - LOG_LEVEL=DEBUG
     volumes:
       - ./backend:/app
+    entrypoint: []
     command: >
       bash -c "python -m pip install awscli && 
       aws sts get-caller-identity > /app/worker_aws_identity.log 2>&1 || echo 'Worker IAM role check failed' &&

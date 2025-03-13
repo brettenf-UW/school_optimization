@@ -34,7 +34,9 @@ def seed_data():
             school = School(
                 id="chico-high-school",
                 name="Chico High School",
-                description="Chico High School, California",
+                code="CHS",
+                city="Chico",
+                state="California",
                 configuration={
                     "periods": ["R1", "R2", "R3", "R4", "G1", "G2", "G3", "G4"],
                     "special_courses": {

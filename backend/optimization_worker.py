@@ -239,7 +239,7 @@ def wait_for_database():
     db_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/echelon')
     engine = sqlalchemy.create_engine(db_url)
     
-    max_retries = 60  # Wait for up to 5 minutes (60 * 5 seconds)
+    max_retries = 120  # Wait for up to 10 minutes (120 * 5 seconds)
     retries = 0
     
     logger.info("Checking if database is ready...")
@@ -248,30 +248,51 @@ def wait_for_database():
         try:
             # Try to connect to the database and check if tables exist
             with engine.connect() as conn:
-                # Check if at least one table exists
-                result = conn.execute(text(
-                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_schema = 'public')"
-                ))
-                tables_exist = result.scalar()
+                # Check if database connection works
+                conn.execute(text("SELECT 1"))
                 
-                if tables_exist:
-                    # Check if job table exists specifically
-                    try:
-                        result = conn.execute(text(
-                            "SELECT EXISTS (SELECT FROM information_schema.tables "
-                            "WHERE table_schema = 'public' AND table_name = 'jobs')"
-                        ))
-                        jobs_table_exists = result.scalar()
+                # Check if jobs table exists and is properly set up
+                try:
+                    result = conn.execute(text(
+                        "SELECT EXISTS (SELECT FROM information_schema.tables "
+                        "WHERE table_schema = 'public' AND table_name = 'jobs')"
+                    ))
+                    jobs_table_exists = result.scalar()
+                    
+                    if jobs_table_exists:
+                        # Further verify jobs table has all expected columns
+                        try:
+                            # Test query to see if we can get column info
+                            conn.execute(text(
+                                "SELECT column_name FROM information_schema.columns "
+                                "WHERE table_schema = 'public' AND table_name = 'jobs'"
+                            ))
+                            
+                            # Check for specific critical tables
+                            tables_to_check = ['jobs', 'schools', 'users', 'files']
+                            all_tables_exist = True
+                            
+                            for table in tables_to_check:
+                                result = conn.execute(text(
+                                    f"SELECT EXISTS (SELECT FROM information_schema.tables "
+                                    f"WHERE table_schema = 'public' AND table_name = '{table}')"
+                                ))
+                                if not result.scalar():
+                                    all_tables_exist = False
+                                    logger.warning(f"Table '{table}' doesn't exist yet. Waiting...")
+                                    break
+                            
+                            if all_tables_exist:
+                                logger.info("Database is ready with all required tables.")
+                                return True
+                            
+                        except Exception as col_e:
+                            logger.warning(f"Error checking table columns: {str(col_e)}. Waiting...")
+                    else:
+                        logger.warning("Database connected but 'jobs' table does not exist. Waiting...")
                         
-                        if jobs_table_exists:
-                            logger.info("Database is ready with all required tables.")
-                            return True
-                        else:
-                            logger.warning("Database connected but 'jobs' table does not exist. Waiting...")
-                    except:
-                        logger.warning("Database connected but could not check for 'jobs' table. Waiting...")
-                else:
-                    logger.warning("Database connected but no tables found. Database may need initialization. Waiting...")
+                except Exception as table_e:
+                    logger.warning(f"Error checking for tables: {str(table_e)}. Waiting...")
             
         except OperationalError as e:
             logger.warning(f"Database not yet ready: {str(e)}. Retrying in 5 seconds...")
@@ -280,6 +301,9 @@ def wait_for_database():
         
         retries += 1
         time.sleep(5)
+        
+        if retries % 12 == 0:  # Log every minute
+            logger.info(f"Still waiting for database... ({retries/12} minutes elapsed)")
     
     logger.error("Database not ready after maximum retries. Exiting.")
     return False

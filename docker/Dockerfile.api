@@ -25,6 +25,7 @@ COPY backend/ .
 RUN useradd -m appuser
 USER appuser
 
-# Set entrypoint for AWS Lambda compatibility
-ENTRYPOINT [ "/usr/local/bin/python", "-m", "awslambdaric" ]
-CMD [ "app.handler" ]
+# For development, we'll use uvicorn directly
+# For AWS Lambda, the entrypoint will be overridden by docker-compose.yml
+ENTRYPOINT ["python"]
+CMD ["app.py"]

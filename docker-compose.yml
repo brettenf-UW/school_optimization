@@ -41,15 +41,19 @@ services:
       - AWS_STS_REGIONAL_ENDPOINTS=regional
       - DEBUG=1
       - LOG_LEVEL=DEBUG
+      - SQS_QUEUE_URL=https://sqs.us-west-2.amazonaws.com/529088253685/echelon-jobs
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
     entrypoint: []
     command: >
-      bash -c "python -m pip install awscli && 
+      bash -c "python -m pip install awscli mangum && 
       aws sts get-caller-identity > /app/aws_identity.log 2>&1 || echo 'IAM role check failed' &&
       aws s3 ls > /app/s3_access.log 2>&1 || echo 'S3 permissions check failed' &&
+      echo 'Initializing database...' &&
+      python db_migrations.py create &&
+      python db_migrations.py seed &&
       uvicorn app:app --host 0.0.0.0 --port 8000 --reload"
     deploy:
       resources:

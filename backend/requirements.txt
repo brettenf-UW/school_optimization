@@ -1,6 +1,7 @@
 # AWS Integration
 boto3>=1.28.0
 botocore>=1.31.0
+mangum>=0.17.0
 
 # Data Processing
 pandas>=1.5.0

@@ -21,30 +21,31 @@ services:
         limits:
           memory: 300M
       
-  # Backend API - Uncomment when needed
-  # api:
-  #   build:
-  #     context: .
-  #     dockerfile: docker/Dockerfile.api
-  #   depends_on:
-  #     - db
-  #   environment:
-  #     - ENVIRONMENT=dev
-  #     - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
-  #     - AWS_ENDPOINT_URL=http://localstack:4566
-  #     - AWS_ACCESS_KEY_ID=test
-  #     - AWS_SECRET_ACCESS_KEY=test
-  #     - AWS_DEFAULT_REGION=us-west-2
-  #     - S3_BUCKET_NAME=dev-echelon-data
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ./backend:/app
-  #   command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         memory: 500M
+  # Backend API
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    depends_on:
+      - db
+    environment:
+      - ENVIRONMENT=dev
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-west-2
+      - S3_BUCKET_NAME=dev-echelon-data
+      - COGNITO_USER_POOL_ID=us-west-2_gVCuWb3dQ
+      - COGNITO_APP_CLIENT_ID=2vabalt8ij3kfp4tibhahce7ds
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    deploy:
+      resources:
+        limits:
+          memory: 500M
       
   # Adminer for database management
   adminer:
@@ -58,6 +59,49 @@ services:
       resources:
         limits:
           memory: 100M
+          
+  # Worker service for processing optimization jobs
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    depends_on:
+      - db
+      - api
+    environment:
+      - ENVIRONMENT=dev
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-west-2
+      - S3_BUCKET_NAME=dev-echelon-data
+      - SQS_QUEUE_URL=http://localhost:8000/api/jobs/queue # Simulate with API endpoint
+      - BATCH_JOB_QUEUE=dev-queue
+      - BATCH_JOB_DEFINITION=dev-job-definition
+    volumes:
+      - ./backend:/app
+    command: python optimization_worker.py
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+          
+  # Frontend React application
+  frontend:
+    image: node:18-alpine
+    working_dir: /app
+    volumes:
+      - ./frontend:/app
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api
+      - VITE_IS_DEV=true
+    deploy:
+      resources:
+        limits:
+          memory: 1G
 
 volumes:
   postgres_data:

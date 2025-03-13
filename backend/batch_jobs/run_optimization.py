@@ -231,19 +231,37 @@ def run_chico_high_greedy():
 def main():
     """Main entry point."""
     try:
-        # Get optimization type (defaults to milp_soft)
+        # Get environment variables
         optimization_type = get_env_var('OPTIMIZATION_TYPE', 'milp_soft')
+        school_id = get_env_var('SCHOOL_ID', 'chico-high-school')
         
-        # Run the appropriate optimization based on type
-        if optimization_type == 'milp_soft':
-            logger.info("Running MILP optimization with soft constraints")
-            return run_chico_high_milp()
-        elif optimization_type == 'greedy':
-            logger.info("Running greedy optimization")
-            return run_chico_high_greedy()
-        else:
-            logger.error(f"Unknown optimization type: {optimization_type}")
+        # Map school_id to the appropriate optimization function
+        school_optimization_map = {
+            'chico-high-school': {
+                'milp_soft': run_chico_high_milp,
+                'greedy': run_chico_high_greedy
+            },
+            # Add other schools here with their optimization functions
+            # 'other-school': {
+            #     'milp_soft': run_other_school_milp,
+            #     'greedy': run_other_school_greedy
+            # }
+        }
+        
+        # Check if school exists in our map
+        if school_id not in school_optimization_map:
+            logger.error(f"Unknown school: {school_id}")
             return 1
+            
+        # Check if optimization type exists for this school
+        if optimization_type not in school_optimization_map[school_id]:
+            logger.error(f"Unknown optimization type '{optimization_type}' for school '{school_id}'")
+            return 1
+        
+        # Run the appropriate optimization function
+        logger.info(f"Running {optimization_type} optimization for {school_id}")
+        optimization_func = school_optimization_map[school_id][optimization_type]
+        return optimization_func()
     
     except Exception as e:
         logger.error(f"Error in main function: {str(e)}")

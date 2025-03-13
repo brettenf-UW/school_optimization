@@ -570,7 +570,7 @@ async def validate_csv_file(file_content: bytes, file_type: str, file_id: str):
             logger.warning(f"Validation errors for {file_type} file: {validation_errors}")
         else:
             file.validation_status = "VALID"
-            file.metadata = {
+            file.file_metadata = {
                 "columns": df.columns.tolist(),
                 "row_count": len(df),
                 "file_type": file_type

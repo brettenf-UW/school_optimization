@@ -16,7 +16,7 @@ class File(Base):
     s3_key = Column(String(1000), nullable=False)
     content_type = Column(String(100), nullable=True)
     size = Column(Integer, nullable=True)  # File size in bytes
-    metadata = Column(JSON, nullable=True)  # File metadata (headers, data summary, etc.)
+    file_metadata = Column(JSON, nullable=True)  # File metadata (headers, data summary, etc.)
     validation_status = Column(String(50), nullable=True)  # PENDING, VALID, INVALID
     validation_errors = Column(JSON, nullable=True)
     is_input = Column(Boolean, default=True)  # True for input files, False for result files
@@ -44,7 +44,7 @@ class File(Base):
             "s3_key": self.s3_key,
             "content_type": self.content_type,
             "size": self.size,
-            "metadata": self.metadata,
+            "metadata": self.file_metadata,
             "validation_status": self.validation_status,
             "validation_errors": self.validation_errors,
             "is_input": self.is_input,

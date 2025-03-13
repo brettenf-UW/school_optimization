@@ -39,16 +39,19 @@ BATCH_JOB_DEFINITION = os.environ.get('BATCH_JOB_DEFINITION')
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'dev')
 
 # Setup database connection (using SQLAlchemy)
-from models import get_session, Job, File
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+# Import models module only when needed to avoid immediate database connection
+# Database connections will be established only when processing jobs
 
-DATABASE_URL = os.environ.get('DATABASE_URL')
-engine = create_engine(DATABASE_URL)
-Session = sessionmaker(bind=engine)
+# Define a function to get models when needed
+def get_models():
+    """Import models only when needed to avoid immediate database connection"""
+    from models import get_session, Job, File
+    return get_session, Job, File
 
 def process_job_request(message_body):
     """Process a job request from SQS."""
+    # Get database models only when needed
+    get_session, Job, File = get_models()
     db = get_session()
     
     try:
@@ -137,6 +140,7 @@ def submit_batch_job(job_id, school_id, optimization_type='milp_soft'):
         logger.info(f"AWS Batch job submitted: {batch_job_id} for Echelon job {job_id}")
         
         # Update job record with AWS Batch job ID
+        get_session, Job, File = get_models()
         db = get_session()
         job = db.query(Job).filter(Job.id == job_id).first()
         if job:
@@ -154,6 +158,8 @@ def submit_batch_job(job_id, school_id, optimization_type='milp_soft'):
 def poll_job_status():
     """Poll AWS Batch for job status updates and update database."""
     try:
+        # Get database models only when needed
+        get_session, Job, File = get_models()
         db = get_session()
         
         # Find jobs in RUNNING state with batch_job_id
@@ -225,6 +231,13 @@ def poll_job_status():
 
 def main():
     """Main entry point for the worker process."""
+    # Print startup message
+    logger.info("=" * 80)
+    logger.info("ECHELON OPTIMIZATION WORKER STARTING")
+    logger.info("This worker will listen for optimization jobs and submit them to AWS Batch")
+    logger.info("=" * 80)
+    
+    # Check if SQS queue URL is set
     if not SQS_QUEUE_URL:
         logger.error("SQS_QUEUE_URL environment variable not set")
         return 1

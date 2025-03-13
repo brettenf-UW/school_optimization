@@ -26,7 +26,8 @@ def get_database_url():
     
     if not secret_arn:
         # Local development fallback
-        return "postgresql://postgres:postgres@localhost:5432/echelon"
+        database_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/echelon')
+        return database_url
     
     try:
         secrets_client = boto3.client("secretsmanager")
@@ -37,7 +38,8 @@ def get_database_url():
     except Exception as e:
         # Log the error and fallback to local development
         print(f"Error getting database URL from Secrets Manager: {str(e)}")
-        return "postgresql://postgres:postgres@localhost:5432/echelon"
+        database_url = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/echelon')
+        return database_url
 
 def get_engine():
     """

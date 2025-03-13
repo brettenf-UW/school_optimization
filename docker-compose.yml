@@ -83,10 +83,9 @@ services:
       - AWS_DEFAULT_REGION=us-west-2
       - S3_BUCKET_NAME=chico-high-school-optimization
       - SQS_QUEUE_URL=https://sqs.us-west-2.amazonaws.com/529088253685/echelon-jobs
-      - SIMULATE_BATCH=true
-      # Commenting out Batch settings since we're using simulation
-      # - BATCH_JOB_QUEUE=echelon-optimization-queue
-      # - BATCH_JOB_DEFINITION=echelon-optimization-job
+      - SIMULATE_BATCH=false
+      - BATCH_JOB_QUEUE=ec2-que
+      - BATCH_JOB_DEFINITION=getting-started-ec2-job-definition
       # Enhanced logging for debugging
       - AWS_SDK_LOAD_CONFIG=1
       - DEBUG=1

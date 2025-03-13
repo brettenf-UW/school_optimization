@@ -48,7 +48,7 @@ if aws s3 ls &>/dev/null; then
     echo "✅ S3 list operation successful"
     
     # Check if our bucket exists
-    BUCKET="echelon-optimization-data"
+    BUCKET="chico-high-school-optimization"
     if aws s3 ls "s3://$BUCKET" 2>/dev/null; then
         echo "✅ Bucket '$BUCKET' exists and is accessible"
         

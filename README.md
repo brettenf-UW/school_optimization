@@ -1,21 +1,38 @@
 # Echelon: School Scheduling Optimization Platform
 
-A web-based platform for optimizing school master schedules using linear programming techniques.
+A cloud-based platform for optimizing school master schedules using advanced linear programming and mathematical optimization techniques.
 
 ## Project Overview
 
-Echelon is designed to help schools create optimal master schedules by using advanced optimization algorithms. The platform:
+Echelon is designed to help schools create optimal master schedules by leveraging powerful cloud infrastructure and mathematical optimization. The platform:
 
-- Allows users to upload CSV files with school-specific data
-- Runs advanced optimization using Gurobi solver
-- Provides a clean interface for managing optimization jobs and viewing results
-- Leverages cloud infrastructure for high-performance computing (48 CPUs, 368GB RAM)
-- Ensures security of sensitive school data
+- Provides a user-friendly web interface for uploading school data files
+- Processes complex scheduling constraints using Gurobi's Mixed Integer Linear Programming solver
+- Distributes computation across high-performance AWS Batch compute resources
+- Delivers optimized schedules that maximize student course satisfaction
+- Balances teacher workloads and classroom utilization
+- Ensures security and compliance for sensitive school data
+- Scales automatically to handle schools of any size
+
+## Architecture
+
+Echelon uses a modern, cloud-based architecture with the following components:
+
+1. **Frontend**: React TypeScript application with Material UI components
+2. **Backend API**: FastAPI Python service for file processing and job management
+3. **Worker Service**: Background process that manages the optimization job queue
+4. **Database**: PostgreSQL for storing application data, user information, and job statuses
+5. **AWS Services**:
+   - **S3**: Stores input files and optimization results
+   - **SQS**: Manages the job processing queue
+   - **Batch**: Executes high-performance optimization jobs on scalable compute resources
+   - **Cognito**: Handles user authentication and authorization
+   - **CloudWatch**: Monitors application performance and logs
 
 ## Directory Structure
 
 ```
-Revised/
+Echelon/
 ├── core/                   # Core optimization algorithms
 │   ├── load.py             # Data loading utilities
 │   ├── greedy.py           # Greedy initial solution generator
@@ -30,16 +47,14 @@ Revised/
 │   │   ├── school.py       # School model
 │   │   ├── job.py          # Job model
 │   │   ├── file.py         # File model
-│   │   └── ...
 │   ├── batch_jobs/         # AWS Batch job definitions
-│   └── requirements.txt    # Python dependencies
+│   └── optimization_worker.py # SQS queue worker for job processing
 │
 ├── frontend/              # React frontend application
 │   ├── src/               # Source code
 │   │   ├── App.tsx        # Main React component
 │   │   ├── components/    # React components
 │   │   ├── services/      # API services
-│   │   └── ...
 │   ├── package.json       # NPM dependencies
 │   └── vite.config.ts     # Vite configuration
 │
@@ -47,14 +62,17 @@ Revised/
 │   └── cloudformation/    # CloudFormation templates
 │       ├── vpc.yml        # VPC and networking
 │       ├── s3.yml         # S3 buckets
-│       └── ...
+│       ├── batch.yml      # AWS Batch resources
+│       └── cognito.yml    # User authentication
 │
 ├── docker/                # Docker configuration
 │   ├── Dockerfile.api     # API Docker image
+│   ├── Dockerfile.optimizer # Optimization Docker image for AWS Batch
 │   └── Dockerfile.worker  # Worker Docker image
 │
 ├── docs/                  # Documentation
-└── docker-compose.yml     # Local development setup
+├── docker-compose.yml     # Full development setup
+└── docker-compose.lite.yml # Lightweight development setup
 ```
 
 ## Getting Started
@@ -63,51 +81,80 @@ Revised/
 - Node.js 18+
 - Python 3.9+
 - Docker and Docker Compose
+- AWS account with access to S3, SQS, Batch, Cognito, and IAM
 - AWS CLI configured with appropriate permissions
 - Gurobi license (for production deployment)
+
+### AWS Resource Setup
+
+1. **Set up AWS services:**
+   - Create an S3 bucket for data storage (e.g., `chico-high-school-optimization`)
+   - Create an SQS queue for job processing (e.g., `echelon-jobs`)
+   - Set up AWS Batch compute environment and job queue
+   - Create IAM roles with appropriate permissions
+
+2. **Configure IAM Role:**
+   - Attach policies for S3, SQS, Batch, and CloudWatch access
+   - Use the provided `check_aws_permissions.sh` script to verify permissions
 
 ### Local Development Setup
 
 1. **Clone the repository:**
    ```bash
    git clone <repository-url>
-   cd Revised
+   cd Echelon
    ```
 
-2. **Start the local development environment:**
+2. **Configure AWS credentials:**
+   ```bash
+   aws configure
+   ```
 
-   **For systems with 8+ GB RAM:**
+3. **Edit docker-compose.yml:**
+   - Update S3 bucket name
+   - Update SQS queue URL
+   - Update AWS Batch resources
+   - Set your EC2 public IP for the frontend
+
+4. **Start the development environment:**
    ```bash
    docker-compose up --build
    ```
 
    This will start:
    - PostgreSQL database
-   - LocalStack (for AWS services simulation)
-   - Backend API
+   - Backend API service
+   - Worker service for job processing
    - Frontend development server
 
-   **For systems with limited resources (4GB RAM):**
-   ```bash
-   docker-compose -f docker-compose.lite.yml up --build
-   ```
-
-   This lighter version only starts:
-   - PostgreSQL database
-   - Adminer for database management
-
-3. **Initialize the database (full version only):**
+5. **Initialize the database:**
    ```bash
    docker-compose exec api python db_migrations.py create
    docker-compose exec api python db_migrations.py seed
    ```
 
-4. **Access the application:**
-   - Full version:
-     - Frontend: http://localhost:5173
-     - Backend API: http://localhost:8000
-   - Lite version:
-     - Adminer database interface: http://localhost:8080 (login with postgres/postgres)
+6. **Access the application:**
+   - Frontend: http://your-ec2-ip:5173
+   - Backend API: http://your-ec2-ip:8000
+   - Adminer database interface: http://your-ec2-ip:8080 (login with postgres/postgres)
+
+### Production Deployment
+
+For production environments, we use the AWS CloudFormation templates in the `infrastructure/` directory:
+
+1. **Deploy CloudFormation stacks:**
+   ```bash
+   aws cloudformation create-stack --stack-name echelon-platform --template-url s3://echelon-cloudformation/master.yml
+   ```
+
+2. **Build and push Docker images:**
+   ```bash
+   aws ecr get-login-password | docker login --username AWS --password-stdin {account-id}.dkr.ecr.{region}.amazonaws.com
+   docker build -t {account-id}.dkr.ecr.{region}.amazonaws.com/echelon-optimization:latest -f docker/Dockerfile.optimizer .
+   docker push {account-id}.dkr.ecr.{region}.amazonaws.com/echelon-optimization:latest
+   ```
+
+3. **Configure environment variables for production services**
 
 ## File Format Requirements
 
@@ -147,13 +194,30 @@ Revised/
   - `period_id`: Unique identifier for each period
   - `period_name`: Name of the period
 
-## Optimization Process
+## Optimization Process and Workflow
 
-The optimization works in two stages:
-1. **Greedy Algorithm**: Creates an initial feasible solution
-2. **Mixed Integer Linear Programming**: Refines the solution to optimality
+The Echelon platform follows this workflow:
 
-### Chico High School Specific Information
+1. **Data Ingestion**: User uploads CSV files with school-specific data through the web interface
+2. **File Validation**: Backend API validates files and stores them in S3
+3. **Job Creation**: A job is created and added to the SQS queue
+4. **Optimization Process**:
+   - **Initial Solution**: Greedy algorithm creates a feasible initial solution
+   - **Solution Refinement**: Mixed Integer Linear Programming (MILP) refines to optimality
+   - **Soft Constraints**: Handles preferences and requirements with varying priorities
+5. **Results Generation**: Creates optimized schedules for sections, teachers, and students
+6. **Results Delivery**: User can view and download the optimized schedules
+
+### High-Performance Computing
+
+The optimization uses AWS Batch to run computationally intensive jobs:
+
+1. **AWS Batch Compute Environment**: Uses r6i.24xlarge instances with 96 vCPUs and high memory
+2. **Docker Containers**: Packaged optimization code runs in isolated containers
+3. **Gurobi Solver**: Commercial-grade mathematical optimization software
+4. **Dynamic Scaling**: AWS Batch automatically scales resources based on job requirements
+
+### Chico High School Specific Configuration
 
 The system includes specific constraints for Chico High School:
 
@@ -162,35 +226,34 @@ The system includes specific constraints for Chico High School:
    - Medical Career courses can only be scheduled in periods R1 or G1
    - Heroes Teach courses can only be scheduled in periods R2 or G2
 3. **Special Education**: Distribution of SPED students is limited to maximum 12 per section
+4. **Science Lab Scheduling**: Avoids scheduling science labs in consecutive periods
 
-For detailed information and file format examples specifically for Chico High School, see the [CHICO_HIGH.md](docs/CHICO_HIGH.md) documentation.
-
-### Command-Line Usage
-
-The core optimization can be run directly from the command line:
-
-```bash
-# Run with local files
-cd core
-python milp_soft.py
-
-# Run with S3 integration
-python milp_soft.py --use-s3 --bucket-name chico-high-school --school-id chico-high-school
-```
+For detailed information specific to Chico High School, see the [CHICO_HIGH.md](docs/CHICO_HIGH.md) documentation.
 
 ### Resource Requirements
 
-The optimization process, particularly the MILP solver (Gurobi), is computationally intensive and requires significant system resources:
+The application is designed to operate in various environments:
 
-- **Recommended**: 8+ GB RAM, 4+ CPU cores for full optimization
-- **Minimum**: 4GB RAM for running database and lite version of the application
-- **Production**: For large schools, the AWS deployment uses r5.12xlarge instances (48 vCPUs, 384GB RAM)
+- **Development**: EC2 instance with 2+ CPUs, 8+ GB RAM
+- **API & Worker**: Minimal footprint (500MB RAM per service)
+- **Optimization**: Uses AWS Batch with high-memory instances (96+ vCPUs, 384+ GB RAM)
+- **Database**: PostgreSQL with modest storage requirements
 
-If your system has limited resources and Docker containers crash during startup, try using the lightweight version:
+### Monitoring and Maintenance
 
-```bash
-docker-compose -f docker-compose.lite.yml up --build
-```
+The system includes tools for monitoring and troubleshooting:
+
+- **CloudWatch Logs**: All services log to CloudWatch for centralized monitoring
+- **Health Checks**: API endpoints for checking service status
+- **Debug Utilities**: Tools for diagnosing permissions and connectivity issues
+- **Admin Dashboard**: Web interface for monitoring job status and system health
+
+## Security and Compliance
+
+- **Data Encryption**: All data encrypted in transit and at rest
+- **Authentication**: AWS Cognito for secure user authentication
+- **Authorization**: Role-based access control for different user types
+- **Audit Logging**: All system actions are logged for compliance and troubleshooting
 
 ## License
 

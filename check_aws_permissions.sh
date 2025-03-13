@@ -118,7 +118,7 @@ if aws batch describe-job-queues &>/dev/null; then
     echo "✅ Batch describe operation successful"
     
     # Check if our job queue exists
-    JOB_QUEUE="echelon-optimization-queue"
+    JOB_QUEUE="ec2-que"
     if aws batch describe-job-queues --job-queues $JOB_QUEUE 2>/dev/null | grep -q $JOB_QUEUE; then
         echo "✅ Job queue '$JOB_QUEUE' exists and is accessible"
         

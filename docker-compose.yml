@@ -29,19 +29,27 @@ services:
     depends_on:
       - db
     environment:
-      - ENVIRONMENT=dev
+      - ENVIRONMENT=production
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      # Removed hardcoded credentials to use EC2 instance role
       - AWS_DEFAULT_REGION=us-west-2
-      - S3_BUCKET_NAME=dev-echelon-data
+      - S3_BUCKET_NAME=echelon-optimization-data
       - COGNITO_USER_POOL_ID=us-west-2_gVCuWb3dQ
       - COGNITO_APP_CLIENT_ID=2vabalt8ij3kfp4tibhahce7ds
+      # Enhanced logging for debugging
+      - AWS_SDK_LOAD_CONFIG=1
+      - AWS_STS_REGIONAL_ENDPOINTS=regional
+      - DEBUG=1
+      - LOG_LEVEL=DEBUG
     ports:
       - "8000:8000"
     volumes:
       - ./backend:/app
-    command: uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      bash -c "python -m pip install awscli && 
+      aws sts get-caller-identity > /app/aws_identity.log 2>&1 || echo 'IAM role check failed' &&
+      aws s3 ls > /app/s3_access.log 2>&1 || echo 'S3 permissions check failed' &&
+      uvicorn app:app --host 0.0.0.0 --port 8000 --reload"
     deploy:
       resources:
         limits:
@@ -69,18 +77,26 @@ services:
       - db
       - api
     environment:
-      - ENVIRONMENT=dev
+      - ENVIRONMENT=production
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      # Removed hardcoded credentials to use EC2 instance role
       - AWS_DEFAULT_REGION=us-west-2
-      - S3_BUCKET_NAME=dev-echelon-data
-      - SQS_QUEUE_URL=http://localhost:8000/api/jobs/queue # Simulate with API endpoint
-      - BATCH_JOB_QUEUE=dev-queue
-      - BATCH_JOB_DEFINITION=dev-job-definition
+      - S3_BUCKET_NAME=echelon-optimization-data
+      - SQS_QUEUE_URL=https://sqs.us-west-2.amazonaws.com/ACCOUNT_ID/echelon-jobs
+      - BATCH_JOB_QUEUE=echelon-optimization-queue
+      - BATCH_JOB_DEFINITION=echelon-optimization-job
+      # Enhanced logging for debugging
+      - AWS_SDK_LOAD_CONFIG=1
+      - DEBUG=1
+      - LOG_LEVEL=DEBUG
     volumes:
       - ./backend:/app
-    command: python optimization_worker.py
+    command: >
+      bash -c "python -m pip install awscli && 
+      aws sts get-caller-identity > /app/worker_aws_identity.log 2>&1 || echo 'Worker IAM role check failed' &&
+      aws sqs list-queues > /app/sqs_access.log 2>&1 || echo 'SQS permissions check failed' &&
+      aws batch describe-job-queues > /app/batch_access.log 2>&1 || echo 'Batch permissions check failed' &&
+      python optimization_worker.py"
     deploy:
       resources:
         limits:
@@ -96,8 +112,11 @@ services:
       - "5173:5173"
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
-      - VITE_API_URL=http://localhost:8000/api
-      - VITE_IS_DEV=true
+      # Point to your EC2 public hostname/IP - THIS NEEDS TO BE UPDATED
+      - VITE_API_URL=http://54.202.229.226:8000/api
+      - VITE_IS_DEV=false
+      - VITE_AWS_REGION=us-west-2
+      - VITE_S3_BUCKET=echelon-optimization-data
     deploy:
       resources:
         limits:

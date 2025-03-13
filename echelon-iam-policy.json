@@ -1,0 +1,49 @@
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket",
+                "s3:GetObject",
+                "s3:PutObject",
+                "s3:DeleteObject"
+            ],
+            "Resource": [
+                "arn:aws:s3:::echelon-optimization-data",
+                "arn:aws:s3:::echelon-optimization-data/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "sqs:SendMessage",
+                "sqs:ReceiveMessage",
+                "sqs:DeleteMessage",
+                "sqs:GetQueueUrl",
+                "sqs:ListQueues"
+            ],
+            "Resource": "arn:aws:sqs:us-west-2:*:echelon-jobs"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "batch:SubmitJob",
+                "batch:DescribeJobs",
+                "batch:ListJobs",
+                "batch:DescribeJobQueues",
+                "batch:DescribeJobDefinitions"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "logs:CreateLogGroup",
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+            ],
+            "Resource": "arn:aws:logs:*:*:*"
+        }
+    ]
+}

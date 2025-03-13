@@ -116,15 +116,16 @@ echo "=== BATCH PERMISSIONS ==="
 echo "Checking AWS Batch permissions..."
 if aws batch describe-job-queues &>/dev/null; then
     echo "✅ Batch describe operation successful"
-    
+
     # Check if our job queue exists
     JOB_QUEUE="ec2-que"
     if aws batch describe-job-queues --job-queues $JOB_QUEUE 2>/dev/null | grep -q $JOB_QUEUE; then
         echo "✅ Job queue '$JOB_QUEUE' exists and is accessible"
-        
+
         # Check job definition
-        JOB_DEF="echelon-optimization-job"
-        if aws batch describe-job-definitions --job-definition-name $JOB_DEF --status ACTIVE 2>/dev/null | grep -q $JOB_DEF; then
+        JOB_DEF="getting-started-ec2-job-definition"
+        if aws batch describe-job-definitions --job-definition-name $JOB_DEF --status ACTIVE 2>/dev/null | grep -q $JOB_DEF;
+then
             echo "✅ Job definition '$JOB_DEF' exists and is accessible"
         else
             echo "❌ Job definition '$JOB_DEF' does not exist or is not accessible"

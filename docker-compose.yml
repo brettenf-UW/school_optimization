@@ -29,11 +29,11 @@ services:
     depends_on:
       - db
     environment:
-      - ENVIRONMENT=production
+      - ENVIRONMENT=development
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
       # Removed hardcoded credentials to use EC2 instance role
       - AWS_DEFAULT_REGION=us-west-2
-      - S3_BUCKET_NAME=echelon-optimization-data
+      - S3_BUCKET_NAME=chico-high-school-optimization
       - COGNITO_USER_POOL_ID=us-west-2_gVCuWb3dQ
       - COGNITO_APP_CLIENT_ID=2vabalt8ij3kfp4tibhahce7ds
       # Enhanced logging for debugging
@@ -77,14 +77,16 @@ services:
       - db
       - api
     environment:
-      - ENVIRONMENT=production
+      - ENVIRONMENT=development
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/echelon
       # Removed hardcoded credentials to use EC2 instance role
       - AWS_DEFAULT_REGION=us-west-2
-      - S3_BUCKET_NAME=echelon-optimization-data
-      - SQS_QUEUE_URL=https://sqs.us-west-2.amazonaws.com/ACCOUNT_ID/echelon-jobs
-      - BATCH_JOB_QUEUE=echelon-optimization-queue
-      - BATCH_JOB_DEFINITION=echelon-optimization-job
+      - S3_BUCKET_NAME=chico-high-school-optimization
+      - SQS_QUEUE_URL=https://sqs.us-west-2.amazonaws.com/529088253685/echelon-jobs
+      - SIMULATE_BATCH=true
+      # Commenting out Batch settings since we're using simulation
+      # - BATCH_JOB_QUEUE=echelon-optimization-queue
+      # - BATCH_JOB_DEFINITION=echelon-optimization-job
       # Enhanced logging for debugging
       - AWS_SDK_LOAD_CONFIG=1
       - DEBUG=1
@@ -112,11 +114,11 @@ services:
       - "5173:5173"
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
-      # Point to your EC2 public hostname/IP - THIS NEEDS TO BE UPDATED
+      # EC2 public IP already configured
       - VITE_API_URL=http://54.202.229.226:8000/api
-      - VITE_IS_DEV=false
+      - VITE_IS_DEV=true
       - VITE_AWS_REGION=us-west-2
-      - VITE_S3_BUCKET=echelon-optimization-data
+      - VITE_S3_BUCKET=chico-high-school-optimization
     deploy:
       resources:
         limits:

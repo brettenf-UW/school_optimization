@@ -9,13 +9,14 @@ The Echelon platform uses a two-stage optimization approach to create optimal sc
 
 ## Data Requirements
 
-The optimization requires the following data files:
+The optimization requires the following data files for Chico High School:
 
-- **students.csv**: Student information
-- **teachers.csv**: Teacher information
-- **sections.csv**: Section/course information
-- **preferences.csv**: Student course preferences
-- **unavailability.csv** (optional): Teacher period unavailability
+- **Student_Info.csv**: Student information including SPED status
+- **Teacher_Info.csv**: Teacher information
+- **Sections_Information.csv**: Section/course information
+- **Student_Preference_Info.csv**: Student course preferences 
+- **Teacher_unavailability.csv** (optional): Teacher period unavailability
+- **Period.csv**: Period definitions
 
 ## Constraints
 

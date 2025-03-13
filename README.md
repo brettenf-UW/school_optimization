@@ -75,6 +75,8 @@ Revised/
    ```
 
 2. **Start the local development environment:**
+
+   **For systems with 8+ GB RAM:**
    ```bash
    docker-compose up --build
    ```
@@ -85,45 +87,83 @@ Revised/
    - Backend API
    - Frontend development server
 
-3. **Initialize the database:**
+   **For systems with limited resources (4GB RAM):**
+   ```bash
+   docker-compose -f docker-compose.lite.yml up --build
+   ```
+
+   This lighter version only starts:
+   - PostgreSQL database
+   - Adminer for database management
+
+3. **Initialize the database (full version only):**
    ```bash
    docker-compose exec api python db_migrations.py create
    docker-compose exec api python db_migrations.py seed
    ```
 
 4. **Access the application:**
-   - Frontend: http://localhost:5173
-   - Backend API: http://localhost:8000
+   - Full version:
+     - Frontend: http://localhost:5173
+     - Backend API: http://localhost:8000
+   - Lite version:
+     - Adminer database interface: http://localhost:8080 (login with postgres/postgres)
 
 ## File Format Requirements
 
-### sections.csv
+### Sections_Information.csv
 - Required columns:
-  - `section_id`: Unique identifier for the section
-  - `course_name`: Name of the course
-  - `capacity`: Maximum number of students
+  - `Section ID`: Unique identifier for each section
+  - `Course ID`: Identifier for the course
+  - `Teacher Assigned`: Teacher assigned to the section
+  - `# of Seats Available`: Number of available seats in the section
+  - `Department`: Department the section belongs to
 
-### students.csv
+### Student_Info.csv
 - Required columns:
-  - `student_id`: Unique identifier for the student
-  - `grade_level`: Student's grade level
+  - `Student ID`: Unique identifier for each student
+  - `SPED`: Indicates special education status (1 for SPED, 0 otherwise)
 
-### teachers.csv
+### Teacher_Info.csv
 - Required columns:
-  - `teacher_id`: Unique identifier for the teacher
-  - `name`: Teacher's name
+  - `Teacher ID`: Unique identifier for each teacher
+  - `Department`: The department the teacher belongs to
+  - `Dedicated Course`: Course the teacher is dedicated to teach
+  - `Current Load`: Number of sections currently assigned
+  - `Science Sections`: Number of science sections taught
 
-### preferences.csv
+### Student_Preference_Info.csv
 - Required columns:
-  - `student_id`: Student identifier
-  - `section_id`: Section identifier
-  - `preference_rank`: Preference ranking (lower is better)
+  - `Student ID`: Unique identifier for each student
+  - `Preferred Sections`: Semicolon-separated list of course IDs (e.g., "Math101;Science202;History303")
+
+### Teacher_unavailability.csv
+- Required columns:
+  - `Teacher ID`: Unique identifier for each teacher
+  - `Unavailable Periods`: Semicolon-separated list of periods when the teacher is unavailable
+
+### Period.csv
+- Required columns:
+  - `period_id`: Unique identifier for each period
+  - `period_name`: Name of the period
 
 ## Optimization Process
 
 The optimization works in two stages:
 1. **Greedy Algorithm**: Creates an initial feasible solution
 2. **Mixed Integer Linear Programming**: Refines the solution to optimality
+
+### Chico High School Specific Information
+
+The system includes specific constraints for Chico High School:
+
+1. **Period Structure**: Uses 8 periods in the schedule (R1-R4, G1-G4)
+2. **Course Restrictions**:
+   - Medical Career courses can only be scheduled in periods R1 or G1
+   - Heroes Teach courses can only be scheduled in periods R2 or G2
+3. **Special Education**: Distribution of SPED students is limited to maximum 12 per section
+
+For detailed information and file format examples specifically for Chico High School, see the [CHICO_HIGH.md](docs/CHICO_HIGH.md) documentation.
 
 ### Command-Line Usage
 
@@ -135,7 +175,21 @@ cd core
 python milp_soft.py
 
 # Run with S3 integration
-python milp_soft.py --use-s3 --bucket-name my-school-data --school-id chico-high-school
+python milp_soft.py --use-s3 --bucket-name chico-high-school --school-id chico-high-school
+```
+
+### Resource Requirements
+
+The optimization process, particularly the MILP solver (Gurobi), is computationally intensive and requires significant system resources:
+
+- **Recommended**: 8+ GB RAM, 4+ CPU cores for full optimization
+- **Minimum**: 4GB RAM for running database and lite version of the application
+- **Production**: For large schools, the AWS deployment uses r5.12xlarge instances (48 vCPUs, 384GB RAM)
+
+If your system has limited resources and Docker containers crash during startup, try using the lightweight version:
+
+```bash
+docker-compose -f docker-compose.lite.yml up --build
 ```
 
 ## License

@@ -54,7 +54,7 @@ services:
       echo 'Initializing database...' &&
       python db_migrations.py create &&
       python db_migrations.py seed &&
-      uvicorn app:app --host 0.0.0.0 --port 8000 --reload"
+      uvicorn app:app --host 0.0.0.0 --port 8000 --reload --log-level debug"
     deploy:
       resources:
         limits:

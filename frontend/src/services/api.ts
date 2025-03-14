@@ -10,6 +10,13 @@ let IS_LOCAL_DEV = false;
 const PROD_API_URL = 'http://54.202.229.226:8000/api'; // Use EC2 direct URL for testing
 const LOCAL_API_URL = 'http://localhost:8000/api';
 
+// For debugging - log all API URLs
+console.log('API URLs configured:', { 
+  PROD_API_URL, 
+  LOCAL_API_URL, 
+  IS_LOCAL_DEV 
+});
+
 // Use LocalStack API endpoint if available, otherwise use production
 const getApiEndpoint = () => {
   return IS_LOCAL_DEV ? LOCAL_API_URL : PROD_API_URL;

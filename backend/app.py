@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, BackgroundTasks, Form, Header
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File as FastAPIFile, BackgroundTasks, Form, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from typing import List, Optional, Dict, Any
@@ -110,10 +110,10 @@ async def verify_admin_access(user: User = Depends(get_current_user)):
 async def upload_school_data(
     background_tasks: BackgroundTasks,
     school_id: str = Form(...),
-    sections_file: UploadFile = File(None),
-    students_file: UploadFile = File(None),
-    teachers_file: UploadFile = File(None),
-    preferences_file: UploadFile = File(None),
+    sections_file: UploadFile = FastAPIFile(None),
+    students_file: UploadFile = FastAPIFile(None),
+    teachers_file: UploadFile = FastAPIFile(None),
+    preferences_file: UploadFile = FastAPIFile(None),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):

@@ -32,13 +32,13 @@ ENV PATH=$PATH:$GUROBI_HOME/bin
 ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$GUROBI_HOME/lib
 
 # Create optimization directory structure
-RUN mkdir -p /app/backend/school_models/common /app/backend/school_models/chico_high /app/output /app/logs
+RUN mkdir -p /app/backend/school_models/common /app/backend/school_models/chico_high /app/backend/batch_jobs /app/output /app/logs
 
 # Copy optimization code
 COPY core/greedy.py /app/backend/school_models/common/
 COPY core/load.py /app/backend/school_models/chico_high/
 COPY core/milp_soft.py /app/backend/school_models/chico_high/
-COPY backend/batch_jobs/run_optimization.py /app/
+COPY backend/batch_jobs/run_optimization.py /app/backend/batch_jobs/
 
 # Set working directory
 WORKDIR /app

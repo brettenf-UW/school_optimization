@@ -173,7 +173,8 @@ const ScheduleOptimizer: React.FC<ScheduleOptimizerProps> = ({ schoolId = 'chico
       if (!uploadSuccess) return;
       
       // Check if we're in development mode (localhost)
-      const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      // Force production mode for testing AWS Batch integration
+      const isDevelopment = false; // window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
       
       if (isDevelopment) {
         // Simulate job submission for local development

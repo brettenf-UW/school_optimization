@@ -3,11 +3,11 @@ import { uploadData, getUrl } from 'aws-amplify/storage';
 import { fetchAuthSession } from 'aws-amplify/auth';
 
 // For LocalStack development
-// Will be dynamically determined by App component, default to true
-let IS_LOCAL_DEV = true;
+// Will be dynamically determined by App component, default to false for production testing
+let IS_LOCAL_DEV = false;
 
 // Base URLs for API
-const PROD_API_URL = 'https://api.echelon-platform.com/api';
+const PROD_API_URL = 'http://54.202.229.226:8000/api'; // Use EC2 direct URL for testing
 const LOCAL_API_URL = 'http://localhost:8000/api';
 
 // Use LocalStack API endpoint if available, otherwise use production

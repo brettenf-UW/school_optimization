@@ -26,28 +26,12 @@ function App() {
   const [jobStarted, setJobStarted] = useState(false);
   const [isLocalStackRunning, setIsLocalStackRunning] = useState(false);
   
-  // Check if LocalStack is available
+  // Force production mode for AWS Batch testing
   useEffect(() => {
-    const checkLocalStack = async () => {
-      try {
-        const response = await fetch('http://localhost:4566/health');
-        if (response.ok) {
-          console.log('LocalStack is running!');
-          setIsLocalStackRunning(true);
-          setLocalStackAvailability(true); // Update API service
-        } else {
-          console.log('LocalStack is not running properly');
-          setIsLocalStackRunning(false);
-          setLocalStackAvailability(false); // Update API service
-        }
-      } catch (error) {
-        console.log('LocalStack is not available, using simulation mode');
-        setIsLocalStackRunning(false);
-        setLocalStackAvailability(false); // Update API service
-      }
-    };
-    
-    checkLocalStack();
+    // Skip actual LocalStack check and force production mode
+    console.log('Forcing production mode for AWS Batch testing');
+    setIsLocalStackRunning(true); // Pretend LocalStack is running to bypass simulation
+    setLocalStackAvailability(true); // Update API service to production mode
   }, []);
   
   // File handlers

@@ -141,44 +141,41 @@ export const EchelonAPI = {
    * @param optimizationType The type of optimization to run
    */
   startOptimizationJob: async (schoolId: string, optimizationType: string = 'milp_soft'): Promise<{jobId: string}> => {
-    if (IS_LOCAL_DEV) {
-      try {
-        // When using LocalStack with API, use fetch to communicate with the API
-        const response = await fetch(`${API_BASE_URL}/jobs`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            // In development, we can use a simulated token
-            'Authorization': 'Bearer dev-token'
-          },
-          body: JSON.stringify({
-            schoolId,
-            optimizationType
-          })
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to start optimization job');
-        }
-        
-        const data = await response.json();
-        return { jobId: data.jobId || `dev-job-${Date.now()}` };
-      } catch (error) {
-        console.error('Error starting job with LocalStack:', error);
-        // Fallback to simulation if the API call fails
-        return { jobId: `dev-job-${Date.now()}` };
-      }
-    } else {
-      // Simulate job submission for development
-      console.log('Development mode: Simulating job submission', { 
-        schoolId, 
-        optimizationType 
+    // Always use direct API call instead of simulation
+    console.log('Production mode: Starting real optimization job', { 
+      schoolId, 
+      optimizationType,
+      apiEndpoint: API_BASE_URL 
+    });
+    
+    try {
+      // Always communicate directly with the API
+      const response = await fetch(`${API_BASE_URL}/jobs/schedule`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer dev-token' // For testing
+        },
+        body: JSON.stringify({
+          school_id: schoolId,
+          job_type: "SCHEDULE_OPTIMIZATION",
+          parameters: {
+            optimization_type: optimizationType
+          }
+        })
       });
       
-      // Short delay to simulate network latency
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to start optimization job');
+      }
       
-      return { jobId: `dev-job-${Date.now()}` };
+      const data = await response.json();
+      console.log('API job response:', data);
+      return { jobId: data.job_id || data.jobId };
+    } catch (error) {
+      console.error('Error starting optimization job:', error);
+      throw error; // Re-throw to allow caller to handle the error
     }
   },
 
@@ -187,56 +184,41 @@ export const EchelonAPI = {
    * @param jobId The job ID
    */
   getJobStatus: async (jobId: string) => {
-    if (IS_LOCAL_DEV && !jobId.startsWith('dev-job')) {
-      try {
-        // When using LocalStack with API, use fetch
-        const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/status`, {
-          headers: {
-            'Authorization': 'Bearer dev-token'
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('Failed to get job status');
+    // Always use direct API call for job status
+    console.log('Getting real job status for job ID:', jobId);
+    
+    try {
+      // Direct API call
+      const response = await fetch(`${API_BASE_URL}/jobs/${jobId}/status`, {
+        headers: {
+          'Authorization': 'Bearer dev-token' // For testing
         }
-        
-        return await response.json();
-      } catch (error) {
-        console.error('Error getting job status from LocalStack:', error);
-        // Fallback to simulation
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to get job status');
       }
-    }
-    
-    // If LocalStack call failed or we're not using it, simulate the response
-    // In development, simulate job status based on elapsed time
-    const jobIdTimestamp = parseInt(jobId.split('-')[2] || Date.now().toString());
-    const elapsedTime = Date.now() - jobIdTimestamp;
-    
-    // Add a small delay to make it feel more realistic
-    await new Promise(resolve => setTimeout(resolve, 200)); 
-    
-    if (elapsedTime < 3000) {
+      
+      const data = await response.json();
+      console.log('Job status response:', data);
+      
+      // Transform the API response to match the expected format
       return {
-        id: jobId,
-        status: 'SUBMITTED',
-        message: 'Optimization job submitted successfully! (Development Mode)'
+        id: data.job_id || jobId,
+        status: data.status,
+        message: data.error_message || `Job is ${data.status}`,
+        progress: data.progress,
+        results: data.result_files || []
       };
-    } else if (elapsedTime < 10000) {
+    } catch (error) {
+      console.error('Error getting job status:', error);
+      
+      // Return a fallback status in case of error
       return {
         id: jobId,
-        status: 'RUNNING',
-        message: 'Optimization is in progress (Development Mode)'
-      };
-    } else {
-      return {
-        id: jobId,
-        status: 'SUCCEEDED',
-        message: 'Optimization completed successfully! (Development Mode)',
-        results: [
-          { name: 'Master_Schedule.csv', url: '#' },
-          { name: 'Student_Assignments.csv', url: '#' },
-          { name: 'Teacher_Schedule.csv', url: '#' }
-        ]
+        status: 'ERROR',
+        message: `Error fetching job status: ${error instanceof Error ? error.message : 'Unknown error'}`,
       };
     }
   },
@@ -247,62 +229,34 @@ export const EchelonAPI = {
    * @param files FormData object containing files to upload
    */
   uploadSchoolData: async (schoolId: string, files: FormData): Promise<any> => {
-    if (IS_LOCAL_DEV) {
-      try {
-        // When using LocalStack with API
-        console.log('LocalStack mode: Uploading files to LocalStack via API');
-        
-        // Use fetch to communicate with your local API
-        const response = await fetch(`${API_BASE_URL}/upload/school-data`, {
-          method: 'POST',
-          headers: {
-            'Authorization': 'Bearer dev-token'
-          },
-          body: files
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.detail || 'Failed to upload files');
-        }
-        
-        return await response.json();
-      } catch (error) {
-        console.error('Error uploading to LocalStack API:', error);
-        
-        // If API call fails, fallback to simulation
-        console.log('Falling back to simulation...');
-        
-        // Log what would be uploaded
-        console.log('Development mode: Simulating file upload', {
-          schoolId,
-          fileCount: Array.from(files.keys()).filter(key => key !== 'school_id').length
-        });
-        
-        // Return a simulated successful response after a delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        return {
-          success: true,
-          message: 'Files uploaded successfully (Development Mode)',
-          fileCount: Array.from(files.keys()).filter(key => key !== 'school_id').length
-        };
-      }
-    } else {
-      // Regular simulation
-      console.log('Development mode: Simulating file upload', {
-        schoolId,
-        fileCount: Array.from(files.keys()).filter(key => key !== 'school_id').length
+    // Always use direct API call
+    console.log('Production mode: Uploading files to real API', {
+      schoolId,
+      fileCount: Array.from(files.keys()).filter(key => key !== 'school_id').length,
+      apiEndpoint: API_BASE_URL
+    });
+    
+    try {
+      // Send files to API
+      const response = await fetch(`${API_BASE_URL}/upload/school-data`, {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer dev-token' // For testing
+        },
+        body: files
       });
       
-      // Return a simulated successful response after a delay
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to upload files');
+      }
       
-      return {
-        success: true,
-        message: 'Files uploaded successfully (Development Mode)',
-        fileCount: Array.from(files.keys()).filter(key => key !== 'school_id').length
-      };
+      const data = await response.json();
+      console.log('File upload response:', data);
+      return data;
+    } catch (error) {
+      console.error('Error uploading files to API:', error);
+      throw error; // Re-throw to allow caller to handle the error
     }
   }
 };

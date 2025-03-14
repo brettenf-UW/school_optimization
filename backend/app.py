@@ -28,10 +28,12 @@ app = FastAPI(
 # CORS configuration to allow frontend requests
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Update this with your frontend domain in production
+    allow_origins=["*", "http://54.202.229.226:5173", "http://localhost:5173"],  # Include specific origins
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
+    expose_headers=["Content-Length"],
+    max_age=600  # Cache preflight requests for 10 minutes
 )
 
 # Initialize AWS services
@@ -47,6 +49,11 @@ COGNITO_APP_CLIENT_ID = os.environ.get('COGNITO_APP_CLIENT_ID', '2vabalt8ij3kfp4
 
 # OAuth2 scheme for token validation
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+# Health check endpoint
+@app.get("/api/health")
+async def health_check():
+    return {"status": "ok", "service": "Echelon API"}
 
 # Initialize database
 @app.on_event("startup")

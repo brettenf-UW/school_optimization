@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File as FastAPIFile, BackgroundTasks, Form, Header
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File as FastAPIFile, BackgroundTasks, Form, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer
 from typing import List, Optional, Dict, Any
@@ -47,8 +47,20 @@ SQS_QUEUE_URL = os.environ.get('SQS_QUEUE_URL', 'https://sqs.us-west-2.amazonaws
 COGNITO_USER_POOL_ID = os.environ.get('COGNITO_USER_POOL_ID', 'us-west-2_gVCuWb3dQ')
 COGNITO_APP_CLIENT_ID = os.environ.get('COGNITO_APP_CLIENT_ID', '2vabalt8ij3kfp4tibhahce7ds')
 
+# Custom OAuth2 scheme that makes token optional in development
+class OptionalOAuth2PasswordBearer(OAuth2PasswordBearer):
+    async def __call__(self, request: Request):
+        # Make authentication optional in development
+        if os.environ.get('ENVIRONMENT') != 'production':
+            try:
+                return await super().__call__(request)
+            except HTTPException:
+                return None
+        else:
+            return await super().__call__(request)
+
 # OAuth2 scheme for token validation
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+oauth2_scheme = OptionalOAuth2PasswordBearer(tokenUrl="token")
 
 # Health check endpoint
 @app.get("/api/health")
@@ -74,6 +86,32 @@ def get_db():
 
 # Authentication and Authorization
 async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    # For development: create a default developer user if no token provided
+    if os.environ.get('ENVIRONMENT') != 'production':
+        try:
+            # Check if a development user already exists
+            dev_user = db.query(User).filter(User.email == "dev@example.com").first()
+            
+            if not dev_user:
+                # Create a development user
+                dev_user = User(
+                    id=str(uuid.uuid4()),
+                    cognito_id="dev-user",
+                    email="dev@example.com",
+                    name="Developer",
+                    role="Admin"  # Give admin access for testing
+                )
+                db.add(dev_user)
+                db.commit()
+                db.refresh(dev_user)
+                logger.info("Created development user for testing")
+            
+            return dev_user
+            
+        except Exception as e:
+            logger.error(f"Error creating development user: {str(e)}")
+    
+    # Production authentication flow
     try:
         # Decode JWT token to get user claims
         # In production, this should validate the token signature with AWS Cognito public keys
